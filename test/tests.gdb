@@ -1,4 +1,4 @@
-# Test file for "Lab7"
+# Test file for "Lab4_stateMachines"
 
 
 # commands.gdb provides the following functions for ease:
@@ -25,22 +25,76 @@
 
 echo ======================================================\n
 echo Running all tests..."\n\n
-
-# Example test:
-test "PINA: 0x00, PINB: 0x00 => PORTC: 0"
-# Set inputs
-setPINA 0x00
-setPINB 0x00
-# Continue for several ticks
+#test sequeence from init: A0 & !A1, !A0 & !A1,  A0 & !A1,!A0 and !A1, A0 & !A1,!A0 AND !A1, !A0 & A1, => PORTC: 8
+test "Add, Add, Add, subtract\nPINA: 0x01, 0x11, 0x01,0x11, 0x01, 0x11, 0x10, 0x11, => PC = 0x08  state:interphase"
+set addsm = init 
 continue 2
-# Set expect values
-expectPORTC 0
-# Check pass/fail
+setPINA ~0x01
+continue 2
+setPINA ~0x00
+continue 2
+setPINA ~0x01
+continue 2
+setPINA ~0x00
+continue 2
+setPINA ~0x01
+continue 2
+setPINA ~0x00
+continue 2
+setPINA ~0x02
+continue 2
+setPINA ~0x00
+continue 2
+expect tmpC 0x08
+expect addsm interphase
 checkResult
 
-# Add tests below
+#test sequeence from init: A0 & !A1, !A0 & !A1,  A0 & !A1,!A0 and !A1, A0 & !A1,!A0 AND !A1, !A0 & A1, => PORTC: 8
+test "Reset Sub Sub, Sub, Sub \nPINA: 0x02, 0x00, 0x02,0x00, 0x02, 0x00, 0x02, 0x00, => PC = 0x03  state:interphase"
+set addsm = init
+continue 2
+setPINA ~0x02
+continue 2
+setPINA ~0x00
+continue 2
+setPINA ~0x02
+continue 2
+setPINA ~0x00
+continue 2
+setPINA ~0x02
+continue 2
+setPINA ~0x00
+continue 2
+setPINA ~0x02
+continue 2
+setPINA ~0x00
+continue 2
+expect tmpC 0x03
+expect addsm interphase
+checkResult
+
+#test sequeence from init: A0 & !A1, !A0 & !A1,  A0 & !A1,!A0 and !A1, A0 & !A1,!A0 AND !A1, !A0 & A1, => PORTC: 8
+test "Add, ADd, Reset \nPINA: 0x02, 0x00, 0x02,0x00, 0x11, 0x00, 0x01, 0x00, => PC = 0x08  state:interphase"
+set addsm = init
+continue 2
+setPINA ~0x01
+continue 2
+setPINA ~0x00
+continue 2
+setPINA ~0x01
+continue 2
+setPINA ~0x00
+continue 2
+setPINA ~0x03
+continue 1
+setPINA ~0x00
+continue 1
+
+expect tmpC 0x00
+expect addsm interphase
+checkResult
 
 # Report on how many tests passed/tests ran
 set $passed=$tests-$failed
 eval "shell echo Passed %d/%d tests.\n",$passed,$tests
-echo ======================================================\n
+cho ======================================================\n
