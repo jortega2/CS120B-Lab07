@@ -1,4 +1,4 @@
-nclude <avr/io.h>
+#include <avr/io.h>
 #include <avr/interrupt.h>
 #include <stdio.h>
 #include "io.h"
@@ -38,6 +38,15 @@ void LCD_WriteCommand (unsigned char Command) {
    asm("nop");
    CLR_BIT(CONTROL_BUS,E);
    delay_ms(2); // ClearScreen requires 1.52ms to execute
+}
+
+void LCD_WriteData(unsigned char Data) {
+	SET_BIT(CONTROL_BUS,RS);
+	DATA_BUS = Data;
+	SET_BIT(CONTROL_BUS,E);
+	asm("nop");
+	CLR_BIT(CONTROL_BUS,E);
+	delay_ms(1);
 }
 
 void LCD_DisplayString( unsigned char column, const unsigned char* string) {
