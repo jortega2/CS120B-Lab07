@@ -19,6 +19,7 @@ volatile unsigned char TimerFlag = 0; // TimerISR() sets this to 1. C programmer
 unsigned long _avr_timer_M = 1; // Start count from here, down to 0. Default 1 ms. 
 unsigned long _avr_timer_cntcurr = 0; // Current internal count of 1ms ticks 
 unsigned int i = 0;
+unsigned int tmpC = 0;
 enum states {init, interphase, inc, incHold, dec, decHold, reset} state; 
 
 void TimerOn(){
@@ -44,7 +45,7 @@ TCNT1 = 0;
 _avr_timer_cntcurr = _avr_timer_M;
 // TimerISR will be called every _avr_timer_cntcurr milliseconds 
 
-// Enable  global interrupts 
+// Enable  global interrupts  
 SREG |= 0x80; // 0x80: 1000000
 }
 
@@ -67,6 +68,7 @@ void TickSM(){
 			state = interphase;
 			break;
 		case interphase:
+			i = 0;
 			if ((~PINA & 0x03) == 0x01){
 				state = inc;
 			} else if ((~PINA & 0x03) == 0x02){
@@ -83,6 +85,7 @@ void TickSM(){
 			} else {
 				state = interphase;
 			}
+			break;
 		case incHold:
 			i++;
 			if ((i > 10) && ((~PINA & 0x03)==0x01)){
@@ -91,14 +94,17 @@ void TickSM(){
 			} else if ((i <= 10) && ((~PINA & 0x03)==0x01)){
 				state = incHold;
 			} else {
-				STATE = interphase;
+				i = 0;
+				state = interphase;
 			}
+			break;
 		case dec:
-			if ((~PINA & 0x02) == 0x02){
+			if ((~PINA & 0x03) == 0x02){
 				state = decHold;
 			} else {
 				state = interphase;
 			}
+			break;
 		case decHold:
 			i++;
 			if ((i > 10) && ((~PINA & 0x03) == 0x02)){
@@ -107,6 +113,7 @@ void TickSM(){
                         } else if (( i <= 10) && ((~PINA & 0x03) == 0x02)){
 				state = decHold;
 			} else {
+				i = 0;
 				state = interphase;
 			}
 			break;
@@ -122,6 +129,7 @@ void TickSM(){
 	} //transitions
 	switch (state) {
 		case init:
+			LCD_ClearScreen();
 			break;
 		case interphase:
 			break;
@@ -169,7 +177,7 @@ ISR(TIMER1_COMPA_vect){
 		_avr_timer_cntcurr = _avr_timer_M;
 	}
 
-int main(){
+int main(void){
 	DDRD = 0xFF; PORTD = 0x00;
 	DDRC = 0xFF; // Set port B to output
 	PORTC = 0x00; // Init port B to 0s
@@ -177,6 +185,7 @@ int main(){
 	TimerSet(10);
 	TimerOn();
 	state = init;
+	LCD_init();
 	//unsigned char tmpB = 0x00;
 	while(1){
 		// User code (i.e. synchSM calls)
