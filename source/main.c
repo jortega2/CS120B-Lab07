@@ -1,137 +1,193 @@
-/*	Author: jorte057 - Juvenal Ortega
- *  Partner(s) Name: Duke Pham dpham073@ucr.edu
- *	Lab Section: 022
- *	Assignment: Lab 5 Exercise 2
- *	Exercise Description: [optional - include for your own benefit]
+/*  Juvenal Ortega jorte057 
+ *  Partner(s) Name & E-mail: Duke Pham dpham073@ucr.edu
+ * Lab Section: 022
+ * Assignment: Lab 6  Exercise 2
+ * Exercise Description: [optional - include for your own benefit]
  *
- *	I acknowledge all content contained herein, excluding template or example
- *	code, is my own original work.
+ * I acknowledge all content contained herein, excluding template 
+ * or example code, is my own original work.
  */
 #include <avr/io.h>
-#include "io.h"
+#include <avr/interrupt.h>
 #ifdef _SIMULATE_
 #include "simAVRHeader.h"
 #endif
-// init- start of sm, set PORTC to 0x07
-// interphase - state that leads to either increment, decrement or reset states depending on inputs PA0 and PA1
-// inc - sets PORTC = PORTC + 1 if PORTC is less than 9. Leads to incWait state
-// dec - sets PORTC = PORTC - 1 if PORTC is greater than 0. Leads to decWait state
-// incWait/decWait - wait for user to release PA0 or PA1, then goes back to interphase. Also goes to reset if both A0 or A1 are held down
-// reset - sets PORTC to 0x00, then waits for both PA0 and PA1 to be released to head back to interphase
-enum add_states { init, interphase,  inc, incWait, dec, decWait, reset } addsm;
 
-void tick();
+volatile unsigned char TimerFlag = 0; // TimerISR() sets this to 1. C programmer should clear to 0.
 
-unsigned int tmpC = 0;
+// Internal variables for mapping AVR's ISR to our cleaner TimerISR model.
+unsigned long _avr_timer_M = 1; // Start count from here, down to 0. Default 1 ms. 
+unsigned long _avr_timer_cntcurr = 0; // Current internal count of 1ms ticks 
+unsigned int i = 0;
+enum states {init, interphase, inc, incHold, dec, decHold, reset} state; 
 
-int main(void) {
-    /* Insert DDR and PORT initializations */
-	DDRA = 0x00; PORTA = 0xFF;
-	DDRC = 0xFF; PORTC = 0x00;
-	DDRD = 0xFF; PORTD = 0x00;
-	addsm  = init;
-	LCD_init();
-    /* Insert your solution below */
-    while (1) {
-	tick();
-    }
+void TimerOn(){
+// AVR timer/counter controller register TCCR1
+TCCR1B = 0x0B; // bit3 = 0: CTC mode (clear timer on compare)
+	       // bit2bit1bit0=011: pre-scaler /64
+	       // 00001011: 0x0B
+	       // So, 8 Mhz clock or 8,000,000 /64 = 125,000 ticks/s
+	       // Thus, TCNT1 register will count at 125,000 ticks/s
+
+// AVR output compare register OCR1A.
+OCR1A = 125; // Timer interrupt will be generated when TCNT1 == OCR1A
+	     // We want a 1 ms tick. 0.001s * 125,0000 ticks/s = 125
+	     // So when TCNT1 register equals 125,
+	     // 1 ms has passed. Thus, we compare to 125.
+
+// AVR timer interrupt mask register
+TIMSK1 = 0x02; //bit1: OCIE1A -- enables compare match interrupt 
+
+// Initialize avr counter
+TCNT1 = 0;
+
+_avr_timer_cntcurr = _avr_timer_M;
+// TimerISR will be called every _avr_timer_cntcurr milliseconds 
+
+// Enable  global interrupts 
+SREG |= 0x80; // 0x80: 1000000
 }
 
-void tick(){
-	switch(addsm) {
+void TimerOff(){
+	TCCR1B = 0x00; // bit3bit1bit0: timer off
+
+}
+
+void TimerISR(){
+	TimerFlag = 1;
+}
+
+void TickSM(){
+	switch (state) {
 		case init:
 			tmpC = 7;
+			i = 0;
 			LCD_ClearScreen();
 			LCD_WriteData(tmpC + '0');
-			addsm = interphase;
+			state = interphase;
 			break;
 		case interphase:
-			//PA0 & !PA1 go to inc
 			if ((~PINA & 0x03) == 0x01){
-				addsm = inc;
-			}
-			//PA1 & !PA0 go to dec
-			else if ((~PINA & 0x03) == 0x02){
-				addsm = dec;
-			}
-			//!PA0 and !PA1 go to reset
-			else if ((~PINA & 0x03) == 0x03){
-				addsm = reset;
-			} else {// stay in interphase for anyrthing else
-				addsm = interphase;
-			}
+				state = inc;
+			} else if ((~PINA & 0x03) == 0x02){
+				state = dec;
+			} else if ((~PINA & 0x03) == 0x03){
+				state = reset;
+			} else {
+				state = interphase;
+			}			
 			break;
 		case inc:
-			addsm = incWait;
-			break;
-		case incWait:
-			//wait for button release 
 			if ((~PINA & 0x03) == 0x01){
-				addsm = incWait;
-			}else if ((~PINA & 0x03) == 0x03){
-				addsm = reset;
-			}else{
-				addsm = interphase;
+				state = incHold;
+			} else {
+				state = interphase;
 			}
-			break;
+		case incHold:
+			i++;
+			if ((i > 10) && ((~PINA & 0x03)==0x01)){
+				i = 0;
+				state = inc;
+			} else if ((i <= 10) && ((~PINA & 0x03)==0x01)){
+				state = incHold;
+			} else {
+				STATE = interphase;
+			}
 		case dec:
-			addsm = decWait;
-			break;
-		case decWait:
-			// wait for button release
-                        if ((~PINA & 0x03) == 0x02){
-                                addsm = decWait;
-			} else if ((~PINA & 0x03) == 0x03){
-                                addsm = reset;
-                        }else{
-                                addsm = interphase;
-                        }
-
+			if ((~PINA & 0x02) == 0x02){
+				state = decHold;
+			} else {
+				state = interphase;
+			}
+		case decHold:
+			i++;
+			if ((i > 10) && ((~PINA & 0x03) == 0x02)){
+				i = 0;
+                                state = dec;
+                        } else if (( i <= 10) && ((~PINA & 0x03) == 0x02)){
+				state = decHold;
+			} else {
+				state = interphase;
+			}
 			break;
 		case reset:
 			if ((~PINA & 0x03) == 0x00){
-				addsm = interphase;
-			} else {
-				addsm = reset;
-			}
-			break;
+                                state = interphase;
+                        } else {
+                                state = reset;
+                        }
+                        break;
 		default:
-			addsm = interphase;
 			break;
-	}//transitions
-	
-	//state actions
-	switch(addsm) {
-                case init:
-                        break;
-                case interphase:
+	} //transitions
+	switch (state) {
+		case init:
 			break;
-                case inc:
-			// Add 1 to PORTC but doesn't surpass 9
-			if (tmpC < 9){
+		case interphase:
+			break;
+		case inc:
+			if (tmpC < 9) {
 				tmpC = (tmpC + 1);
-				LCD_ClearScreen();
-				LCD_WriteData(tmpC + '0');
-			}	
-                        break;
-		case incWait:
-			break;
-                case dec:
-			//Subtract 1 to PORTC but doesn't go below 0
-			if (tmpC > 0){
-                        	tmpC = (tmpC - 1);
 				LCD_ClearScreen();
 				LCD_WriteData (tmpC + '0');
 			}
-                        break;
-		case decWait:
+			break;	
+		case incHold:
 			break;
-                case reset:
+		case dec: 
+			if (tmpC > 0) {
+                                tmpC = (tmpC - 1);
+                                LCD_ClearScreen();
+                                LCD_WriteData (tmpC + '0');
+                        }
+			break;
+		case decHold:
+			break;
+		case reset:
 			tmpC = 0;
 			LCD_ClearScreen();
 			LCD_WriteData (tmpC + '0');
-                        break;
-                default:
-                        break;
-        }//state actins
+			break;
+		default:
+			break;
+	} //state logic 
 }
+
+// In our approach, the C programmer does not touch this ISR, but rather TimerISR()
+ISR(TIMER1_COMPA_vect){
+	// CPU automatically calls when TCNT1 == OCR1 (every 1 ms per TimerON settings)
+	_avr_timer_cntcurr--; // Count down to 0 rather than up to TOP
+	if(_avr_timer_cntcurr == 0){ //results in a more efficient compare
+		TimerISR(); // Call the ISR that the user uses
+		_avr_timer_cntcurr = _avr_timer_M;
+	
+	}
+}
+	// Set TimerISR() to tick every M ms
+	void TimerSet(unsigned long M){
+		_avr_timer_M = M;
+		_avr_timer_cntcurr = _avr_timer_M;
+	}
+
+int main(){
+	DDRD = 0xFF; PORTD = 0x00;
+	DDRC = 0xFF; // Set port B to output
+	PORTC = 0x00; // Init port B to 0s
+	DDRA = 0x00; PORTA = 0xFF;
+	TimerSet(10);
+	TimerOn();
+	state = init;
+	//unsigned char tmpB = 0x00;
+	while(1){
+		// User code (i.e. synchSM calls)
+		TickSM();
+		while(!TimerFlag); // Wait 1 sec
+		TimerFlag = 0;
+		// Note: FOr the above a better style woulde use a synchSM with TickSM()
+		// This example just illustrates the use of the ISR and flag
+	
+	}
+	return 1;
+}
+
+
